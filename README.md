@@ -51,3 +51,6 @@ When master context changes:
 ## License
 
 GPL-3.0-only (same as A modules)
+---
+
+**Branch:** Use `main` for all development.

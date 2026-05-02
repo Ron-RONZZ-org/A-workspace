@@ -11,7 +11,7 @@ This is the root context file for the entire **A** project. AI agents working fr
 
 **Context resolution order (highest priority first):**
 1. Module AGENTS.md (e.g., `A-encik/AGENTS.md`)
-2. Root `./AGENTS.md` (this file)
+2. Root `AGENTS.md` (this file)
 3. autish-legacy for reference patterns
 
 ---
@@ -35,7 +35,8 @@ This is the root context file for the entire **A** project. AI agents working fr
 | [A-tempo](./A-tempo/) | ✅ | Time/clock (simplest plugin) |
 | [A-vorto](./A-vorto/) | ✅ | Wordbook (basic CRUD) |
 | [A-encik](./A-encik/) | ✅ | Knowledge encyclopedia |
-| [A-sistemo](./A-sistemo/) | ? | System management |
+| [A-sistemo](./A-sistemo/) | ✅ | System management |
+| [A-sekurkopio](./A-sekurkopio/) | ✅ | Backup and restore |
 | [A-organizi](./A-organizi/) | ? | Calendar+todo+journal |
 | [A-lien](./A-lien/) | ? | Email+contacts |
 | [A-medio](./A-medio/) | ? | Video+photo+audio |
@@ -47,7 +48,7 @@ This is the root context file for the entire **A** project. AI agents working fr
 
 ```
 src/A/
-├── __init__.py           # Plugin discovery
+├── __init__.py           # Plugin discovery, exports
 ├── cli.py                # Main entry
 ├── core/                 # Zero dependencies
 │   ├── types.py
@@ -55,13 +56,15 @@ src/A/
 │   ├── i18n.py
 │   ├── config.py
 │   ├── exceptions.py
-│   └── service.py        # CRUDService base class
+│   └── service.py        # CRUDService base class (+ FTS5 support)
 ├── data/
-│   └── base.py           # SQLiteDB
+│   ├── base.py           # SQLiteDB
+│   └── search.py         # FTS5 schema & query builder
 └── utils/
     ├── output.py
     ├── subprocess.py
-    └── editor.ry
+    ├── editor.py
+    └── normalize.py      # Text normalization (ligatures, accents)
 ```
 
 **Plugin structure:**
@@ -183,6 +186,16 @@ Tests should use `typer.testing.CliRunner` for CLI tests.
 
 ---
 
+## Shell Integrations
+
+Some features are better handled as shell aliases than plugins. See issue [#3](https://github.com/Ron-RONZZ-org/A-core/issues/3).
+
+| Feature | Shell Instead | Why |
+|---------|--------------|-----|
+| kp (clipboard) | `xclip`, `xsel`, `pbcopy` | 60-line wrapper is wasteful for 1 bash command |
+
+---
+
 ## Cross-Module Dependencies
 
 ### Optional Dependencies (Runtime Detection)
@@ -228,6 +241,10 @@ load_profile, save_profile, export_profile, import_profile
 error, info, warning
 # Service
 CRUDService
+# Text Normalization
+fold_search_text, normalize_french_ligatures, NORMALIZERS
+# Search
+FTSConfig
 ```
 
 ### Data Layer
@@ -238,6 +255,38 @@ db = SQLiteDB("mydb.db")
 db.execute(sql)        # -> list[dict]
 db.execute_one(sql)    # -> dict | None
 db.transaction()      # context manager
+db.raw_connection()   # context manager for lastrowid
+```
+
+### Search & FTS5
+
+```python
+from A.data.search import FTSConfig, build_fts_schema, build_search_query
+
+# Configure FTS5 for a table
+config = FTSConfig(
+    table="vorto",
+    fts_columns=["teksto"],
+    filter_columns=["lingvo", "kategorio"],
+    normalize={"teksto": fold_search_text},
+)
+
+# Use with CRUDService
+service = CRUDService(db, "vorto", fts_config=config)
+service.search_fts("query", filters={"lingvo": "fr"})
+service.search_fuzzy("heelo", threshold=0.8)  # rapidfuzz if available
+service.search_advanced("query", fuzzy=True)
+```
+
+### Text Normalization
+
+```python
+from A.utils.normalize import fold_search_text, normalize_french_ligatures
+
+fold_search_text("Cœur")           # -> "coeur"
+fold_search_text("Été")            # -> "ete"
+normalize_french_ligatures("cœur", "fold")    # -> "coeur"
+normalize_french_ligatures("coeur", "expand") # -> "cœur"
 ```
 
 ---
@@ -249,8 +298,8 @@ Each module extends this root. See individual AGENTS.md for details:
 | Module | AGENTS.md | Key Differences |
 |--------|-----------|--------------|
 | A-tempo | [Link](./A-tempo/AGENTS.md) | Simplest — no DB |
-| A-vorto | [Link](./A-vorto/AGENTS.md) | Basic CRUD pattern |
-| A-encik | [Link](./A-encik/AGENTS.md) | Extended CRUD + FTS |
+| A-vorto | [Link](./A-vorto/AGENTS.md) | CRUD + FTS5 (core-based) |
+| A-encik | [Link](./A-encik/AGENTS.md) | CRUD + FTS5 + JSON columns (core-based) |
 | A-sistemo | [Link](./A-sistemo/AGENTS.md) | Subprocess-heavy |
 | A-organizi | [Link](./A-organizi/AGENTS.md) | Calendar+todos |
 | A-lien | [Link](./A-lien/AGENTS.md) | Email+contacts |
@@ -270,3 +319,7 @@ Each module extends this root. See individual AGENTS.md for details:
 ---
 
 *(End of root AGENTS.md)*
+
+## Branch Convention
+
+All A-* repos use `main` as the primary branch. Use `main` for all development.
