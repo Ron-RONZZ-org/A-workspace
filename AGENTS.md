@@ -74,9 +74,10 @@ Consistent naming reduces user confusion and enables cross-module tooling.
 2. **ASCII only** — avoid diacritics (`ĉ`, `ĝ`, `ĥ`, `ĵ`, `ŝ`, `ŭ`) in command names. Use plain ASCII equivalents:
    - `serci` not `serĉi`
    - `restauxrigi` (x-convention) or `restaŭrigi` (if ŭ is acceptable in the locale)
-3. **Do NOT use bare `help`/`helpi` commands** `-h/--helpo/--help` flags are sufficient
-4. **Domain-specific commands** (e.g., `konekti`, `restarti`, `generi`) are allowed but should be minimized
-5. **Hidden aliases** — deprecated commands should be registered with `@app.command(hidden=True)` or `deprecated=True`
+3. **`no_args_is_help=True`** for Typer apps with subcommands — calling without args shows help instead of "Missing command". Root apps with `invoke_without_command=True` and a callback are exempt.
+4. **Do NOT use bare `help`/`helpi` commands** `-h/--helpo/--help` flags are sufficient
+5. **Domain-specific commands** (e.g., `konekti`, `restarti`, `generi`) are allowed but should be minimized
+6. **Hidden aliases** — deprecated commands should be registered with `@app.command(hidden=True)` or `deprecated=True`
 
 #### Standard Commands
 
@@ -85,7 +86,7 @@ Consistent naming reduces user confusion and enables cross-module tooling.
 | `-h` / `--help` / `--helpo` | Help | **Required** | Configured via `context_settings={"help_option_names": ["-h", "--help", "--helpo"]}`. Do NOT add a bare `helpi` command. |
 | `ls` | List items | **Required** for data modules | Alias `list` → `ls` with deprecation where `list` exists. |
 | `vidi` | View single item detail | **Required** for data modules | Universal "show entry" command. |
-| `aldoni` | Add/create item | **Required** for CRUD modules | |
+| `aldoni` | Add/create item | **Required** for CRUD modules | must have duplicate verification: propose to modifi if similar entry exists |
 | `modifi` | Update/modify item | **Required** for CRUD modules | |
 | `forigi` | Delete item(s) | **Required** for CRUD modules | Accept multiple positional args for bulk delete. |
 | `serci` | Search items | **Required** for data modules | Use ASCII `c` (NOT `serĉi` with diacritic). `serchi` may be kept as deprecated alias. |
@@ -132,7 +133,67 @@ tr_multi(
 | CLI help strings (typer.Option/Argument `help=`) | `tr_multi(eo, en, fr)` | `help=tr_multi("Konto UUID", "Account UUID", "UUID compte")` |
 | Typer app help | `tr_multi(eo, en, fr)` | `help=tr_multi("Administri kontaktojn.", "Manage contacts.", "Gérer les contacts.")` |
 | Info/error/warning messages | `tr_multi(eo, en, fr)` | `info(tr_multi("Konto kreita.", "Account created.", "Compte créé."))` |
-| Typer command docstrings | Plain English | Used as `--help` output, written in English |
+| Typer command help text | `tr_multi(eo, en, fr)` | Set via `@command(help=tr_multi(...))` or `app.command(help=tr_multi(...))` |
+| Command function docstring | English | Internal developer docs only — NOT shown in CLI `--help` |
+
+### Rule: interactive config / TOML config storage
+
+Modules with > 5 user-facing options **must** expose all of them through three channels:
+
+| Channel | Audience | When |
+|---------|----------|------|
+| CLI options (`--flag`) | All users | Quick tweak, scripting |
+| Interactive modal | New users | First-time setup guidance. **Must prompt for ALL user-facing options**, not just a subset. If the user invokes the command without flags, every configurable option should be offered interactively. |
+| TOML file (direct edit) | Power users | Sharing configs, dotfiles |
+
+#### Priority order (higher wins)
+
+```
+CLI flag > TOML file > hardcoded default
+```
+
+A module should load config in this order:
+1. Parse TOML file for baseline values
+2. Override with CLI-flag values at invocation time
+
+#### TOML file location
+
+**Always per-module, never shared.** Every module gets its own file at:
+
+```python
+from A.core.paths import config_dir
+
+# ~/.config/A/A-modulo/config.toml
+path = config_dir() / "A-modulo" / "config.toml"
+```
+
+No shared `~/.config/A/config.toml` — per-module consistency is more important than reducing the file count. Use `tomllib` (stdlib, Python ≥ 3.11) for parsing.
+
+#### Secrets warning
+
+**Never store API keys, passwords, or tokens in TOML files.** TOML files are plain text and easily committed to version control by accident.
+
+- Secrets → system keyring via `A.core.ai.save_api_key()` or `keyring` directly
+- Everything else (model names, UI preferences, server URLs) → TOML is fine
+
+#### Implementation: use A-core `ConfigSchema`
+
+**Do not implement the three channels manually.** A-core provides a `ConfigSchema` utility that derives CLI options, interactive prompts, and TOML read/write from a single schema:
+
+```python
+from A.core.config import ConfigSchema
+
+schema = ConfigSchema("A-modulo", {
+    "provider": {"type": "str", "default": "ollama", "help": "LLM provider"},
+    "timeout":  {"type": "int", "default": 30,      "help": "Request timeout (s)"},
+    "color":    {"type": "bool", "default": True,    "help": "Enable colors"},
+})
+
+# One call generates CLI flags, interactive prompts, and TOML persistence.
+# TOML path: ~/.config/A/A-modulo/config.toml
+```
+
+Feature request: https://github.com/Ron-RONZZ-org/A-core/issues/60
 
 ---
 
@@ -220,6 +281,7 @@ xxx = "A_xxx.cli:app"
 6. **Tests required** for all modules
 7. **WAL mode** for SQLite
 8. **Import from `A`** — never duplicate utilities
+9. **UUID primary key** for all data tables — use `uuid TEXT PRIMARY KEY` for every table that stores user-facing entries. Exceptions (e.g., singleton configs, append-only logs, import caches without cross-references) must document the reason. UUIDs prevent collision bugs like A-agento#32 where `(provider, profile)` was non-unique.
 
 
 **Special cases:**
