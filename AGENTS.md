@@ -30,6 +30,20 @@ This is the **workspace root context** — the parent directory containing multi
 
 ---
 
+## Cross-Module Issues
+
+**Issues with cross-module impact** (design decisions, shared standards, API compatibility, breaking changes) must be filed on **this repo** ([A-workspace](https://github.com/Ron-RONZZ-org/A-workspace/issues)), not on individual module repos.
+
+Examples of cross-module issues:
+- Adding a new standard CLI command format
+- Changing the plugin discovery mechanism
+- Updating i18n conventions
+- Introducing a shared utility that affects multiple modules
+
+Module-specific bugs or features go on each module's own issue tracker.
+
+---
+
 ## Rule: Use A-core Utilities
 
 **All A-modules must import from `A-core`, never reinvent:**
