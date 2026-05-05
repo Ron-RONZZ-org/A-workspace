@@ -85,13 +85,14 @@ If you need a utility **reusable across A-modules**, don't write it locally — 
 Consistent naming reduces user confusion and enables cross-module tooling.
 
 1. **Esperanto names** — all command names in Esperanto
-2. **ASCII only** — avoid diacritics (`ĉ`, `ĝ`, `ĥ`, `ĵ`, `ŝ`, `ŭ`) in command names. Use plain ASCII equivalents:
+2. **Verb infinitive form** — command names must be verbs in their base/infinitive form (`-i` suffix). Examples: `aldoni`, `forigi`, `modifi`, `vidi`, `generi`, `agordi`. Avoid nouns (`agordo`, `listo`, `helpo`) — use the verb form (`agordi`, `ls`, `helpo` is not needed since `-h`/`--help` suffices). The only exception is `ls` (universally recognized abbreviation).
+3. **ASCII only** — avoid diacritics (`ĉ`, `ĝ`, `ĥ`, `ĵ`, `ŝ`, `ŭ`) in command names. Use plain ASCII equivalents:
    - `serci` not `serĉi`
    - `restauxrigi` (x-convention) or `restaŭrigi` (if ŭ is acceptable in the locale)
-3. **`no_args_is_help=True`** for Typer apps with subcommands — calling without args shows help instead of "Missing command". Root apps with `invoke_without_command=True` and a callback are exempt.
-4. **Do NOT use bare `help`/`helpi` commands** `-h/--helpo/--help` flags are sufficient
-5. **Domain-specific commands** (e.g., `konekti`, `restarti`, `generi`) are allowed but should be minimized
-6. **Hidden aliases** — deprecated commands should be registered with `@app.command(hidden=True)` or `deprecated=True`
+4. **`no_args_is_help=True`** for Typer apps with subcommands — calling without args shows help instead of "Missing command". Root apps with `invoke_without_command=True` and a callback are exempt.
+5. **Do NOT use bare `help`/`helpi` commands** `-h/--helpo/--help` flags are sufficient
+6. **Domain-specific commands** (e.g., `konekti`, `restarti`, `generi`) are allowed but should be minimized
+7. **Hidden aliases** — deprecated commands should be registered with `@app.command(hidden=True)` or `deprecated=True`
 
 #### Standard Commands
 
@@ -297,6 +298,8 @@ xxx = "A_xxx.cli:app"
 8. **Import from `A`** — never duplicate utilities
 9. **UUID primary key** for all data tables — use `uuid TEXT PRIMARY KEY` for every table that stores user-facing entries. Exceptions (e.g., singleton configs, append-only logs, import caches without cross-references) must document the reason. UUIDs prevent collision bugs like A-agento#32 where `(provider, profile)` was non-unique.
 
+10. **UUID first column in `ls` output** — all `ls`/`list` commands must display UUID as the first column. This allows users to quickly reference entries by UUID for `vidi`, `modifi`, `forigi`, and other commands. Exception: tables where UUID is not the primary identifier (rare).
+
 
 **Special cases:**
 - **User data** (contact names, email addresses, tags) — never translate
@@ -342,6 +345,41 @@ uv run pytest tests/ -v
 ```
 
 Tests should use `typer.testing.CliRunner` for CLI tests.
+
+### Test Isolation (MANDATORY)
+
+Every A-module test suite **MUST** have an `autouse=True` fixture that isolates all external side effects:
+
+| Side effect | Isolation method |
+|-------------|-----------------|
+| Database path | `monkeypatch.setattr(module, "data_dir", lambda: tmp_path)` + reset singleton |
+| System keyring | `monkeypatch.setattr("A.core.ai.save_api_key", lambda key, **kw: True)` |
+| Config directory | `monkeypatch.setattr(module, "config_dir", lambda: tmp_path)` |
+| Network calls | Mock all HTTP/IMAP/SMTP calls (never reach real servers) |
+
+**Reference pattern** (A-encik):
+```python
+# tests/conftest.py
+@pytest.fixture(autouse=True)
+def isolate_db(monkeypatch, tmp_path):
+    import A_encik.data.storage as storage_module
+    monkeypatch.setattr(storage_module, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(storage_module, "_DB_FILE", tmp_path / "encik.db")
+```
+
+**Reference pattern** (A-agento):
+```python
+# tests/conftest.py
+@pytest.fixture(autouse=True)
+def isolate_agento(monkeypatch, tmp_path):
+    from A_agento.data.storage import close_db
+    close_db()
+    monkeypatch.setattr("A_agento.data.storage.data_dir", lambda: tmp_path)
+    monkeypatch.setattr("A.core.ai.save_api_key", lambda key, **kw: True)
+    monkeypatch.setattr("A.core.ai.get_api_key", lambda **kw: "mock-key")
+```
+
+**Rule:** `@patch` decorators are for controlling return values, NOT for isolation. The `autouse` fixture is the safety net. Tests that write to real databases or keyrings will be rejected in code review.
 
 ---
 
