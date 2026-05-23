@@ -103,7 +103,7 @@ Consistent naming reduces user confusion and enables cross-module tooling.
 | `vidi` | View single item detail | **Required** for data modules | Universal "show entry" command. |
 | `aldoni` | Add/create item | **Required** for CRUD modules | must have duplicate verification: propose to modifi if similar entry exists |
 | `modifi` | Update/modify item | **Required** for CRUD modules | |
-| `forigi` | Delete item(s) | **Required** for CRUD modules | Accept multiple positional args for bulk delete. |
+| `forigi` | Delete item(s) | **Required** for CRUD modules | Accept **multiple positional args** for bulk delete. See [`forigi` Contract](#forigi-contract-crud-modules) below. |
 | `serci` | Search items | **Required** for data modules | Use ASCII `c` (NOT `serĉi` with diacritic). `serchi` may be kept as deprecated alias. |
 | `importi` | Import data | Recommended | |
 | `eksporti` | Export data | Recommended | |
@@ -125,6 +125,101 @@ Implementation pattern (Typer):
 ```python
 trash_app = typer.Typer()
 app.add_typer(trash_app, name="rubujo", help=tr_multi(...))
+```
+
+##### `forigi` Contract (CRUD Modules)
+
+All `forigi` commands **must**:
+
+1. **Accept multiple positional args** — use `list[str] = typer.Argument(...)` or `Annotated[list[str], typer.Argument(...)]` for the primary identifier parameter.
+2. **Iterate independently** — each input identifier must be resolved independently. Failure, ambiguity, or not-found on one must not block the remaining items. Report per-item and continue.
+3. **Show batch preview** — before deletion, display a summary table of all successfully-resolved items with their display names and truncated UUIDs (or domain-appropriate primary identifiers).
+4. **Single confirmation** — ask once "Delete these N items?" with `default=False`. Accept `-y`/`--jes`/`--yes` to skip.
+5. **Partial success report** — after the operation, report "Deleted X of M items." with details on individual failures.
+6. **Respect identifier types** — use the domain-appropriate identifier (UUID prefix, name, predicate ID, etc.). Not all `forigi` commands use UUIDs.
+
+**Exceptions:**
+- Root commands operating on fundamentally different identifiers (e.g., SPO triples in A-semantika) may use a separate pattern, documented with rationale.
+- `rubujo forigi` permanently deletes a specific trashed item — still accepts multiple identifiers.
+
+**Canonical implementation pattern:**
+```python
+@app.command("forigi", help=tr_multi("...", "...", "..."))
+def forigi(
+    identifiers: list[str] = typer.Argument(
+        ...,
+        help=tr_multi("... (pluraj)", "... (multiple)", "... (plusieurs)"),
+    ),
+    yes: bool = typer.Option(
+        False, "-y", "--jes", "--yes",
+        help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation"),
+    ),
+) -> None:
+    \"\"\"Delete items.\"\"\"
+    svc = get_service()
+
+    # Phase 1: Resolve all identifiers
+    resolved: list[dict] = []
+    errors: list[tuple[str, str]] = []
+    for ident in identifiers:
+        try:
+            item = svc.resolve(ident)
+            if item:
+                resolved.append(item)
+            else:
+                errors.append((ident, tr_multi("ne trovita", "not found", "non trouvé")))
+        except Exception as e:
+            errors.append((ident, str(e)))
+
+    # Report resolution errors
+    for input_val, reason in errors:
+        error(tr_multi(
+            "Forigi {i}: {r}", "Delete {i}: {r}", "Supprimer {i} : {r}",
+        ).format(i=input_val, r=reason))
+
+    if not resolved:
+        error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
+        raise typer.Exit(1)
+
+    # Phase 2: Batch preview
+    if not yes:
+        from rich.table import Table
+        from rich.box import SIMPLE as BOX_SIMPLE
+        table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+        table.add_column("UUID", no_wrap=True)
+        table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
+        for item in resolved:
+            table.add_row(item["uuid"][:8], _get_display_name(item))
+        info(table)
+
+        from A.utils.interactive import confirm_action
+        if not confirm_action(
+            tr_multi(
+                "Ĉu forigi {n} erojn?", "Delete {n} items?", "Supprimer {n} éléments?",
+            ).format(n=len(resolved)),
+            default=False,
+        ):
+            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+            raise typer.Exit(0)
+
+    # Phase 3: Delete each
+    deleted = 0
+    for item in resolved:
+        try:
+            svc.delete(item["uuid"])
+            deleted += 1
+        except Exception as e:
+            error(tr_multi(
+                "Eraro forigante {u}: {e}",
+                "Error deleting {u}: {e}",
+                "Erreur lors de la suppression de {u} : {e}",
+            ).format(u=item["uuid"][:8], e=str(e)))
+
+    info(tr_multi(
+        "Forigis {d} el {t} eroj.",
+        "Deleted {d} of {t} items.",
+        "Supprimé {d} sur {t} éléments.",
+    ).format(d=deleted, t=len(resolved)))
 ```
 
 ### Rule: Multi-lingual Help / User Docs
