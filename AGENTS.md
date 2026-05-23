@@ -371,32 +371,27 @@ Every A-module test suite **MUST** have an `autouse=True` fixture that isolates 
 
 | Side effect | Isolation method |
 |-------------|-----------------|
-| Database path | `monkeypatch.setattr(module, "data_dir", lambda: tmp_path)` + reset singleton |
-| System keyring | `monkeypatch.setattr("A.core.ai.save_api_key", lambda key, **kw: True)` |
-| Config directory | `monkeypatch.setattr(module, "config_dir", lambda: tmp_path)` |
+| Database path | `patch_paths(monkeypatch, tmp_path)` — redirects `data_dir`, `config_dir`, `cache_dir`, `state_dir` to `tmp_path` subdirectories |
+| System keyring | `patch_keyring(monkeypatch)` — mocks `save_api_key` and `get_api_key` |
 | Network calls | Mock all HTTP/IMAP/SMTP calls (never reach real servers) |
 
-**Reference pattern** (A-encik):
+**Canonical pattern** (uses `A.core.testing`):
+
 ```python
 # tests/conftest.py
+import pytest
+from A.core.testing import patch_paths, patch_keyring
+
 @pytest.fixture(autouse=True)
-def isolate_db(monkeypatch, tmp_path):
-    import A_encik.data.storage as storage_module
-    monkeypatch.setattr(storage_module, "_DATA_DIR", tmp_path)
-    monkeypatch.setattr(storage_module, "_DB_FILE", tmp_path / "encik.db")
+def isolate_module(monkeypatch, tmp_path):
+    patch_paths(monkeypatch, tmp_path)
+    patch_keyring(monkeypatch)
+    # Module-specific singleton resets go here...
+    # e.g. storage_module._db = None
+    # e.g. service_module._service = None
 ```
 
-**Reference pattern** (A-agento):
-```python
-# tests/conftest.py
-@pytest.fixture(autouse=True)
-def isolate_agento(monkeypatch, tmp_path):
-    from A_agento.data.storage import close_db
-    close_db()
-    monkeypatch.setattr("A_agento.data.storage.data_dir", lambda: tmp_path)
-    monkeypatch.setattr("A.core.ai.save_api_key", lambda key, **kw: True)
-    monkeypatch.setattr("A.core.ai.get_api_key", lambda **kw: "mock-key")
-```
+This is the **required** pattern for all modules. See `A.core.testing` for details.
 
 **Rule:** `@patch` decorators are for controlling return values, NOT for isolation. The `autouse` fixture is the safety net. Tests that write to real databases or keyrings will be rejected in code review.
 
