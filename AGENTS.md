@@ -86,13 +86,21 @@ Consistent naming reduces user confusion and enables cross-module tooling.
 
 1. **Esperanto names** — all command names in Esperanto
 2. **Verb infinitive form** — command names must be verbs in their base/infinitive form (`-i` suffix). Examples: `aldoni`, `forigi`, `modifi`, `vidi`, `generi`, `agordi`. Avoid nouns (`agordo`, `listo`, `helpo`) — use the verb form (`agordi`, `ls`, `helpo` is not needed since `-h`/`--help` suffices). The only exception is `ls` (universally recognized abbreviation).
-3. **ASCII only** — avoid diacritics (`ĉ`, `ĝ`, `ĥ`, `ĵ`, `ŝ`, `ŭ`) in command names. Use plain ASCII equivalents:
-   - `serci` not `serĉi`
-   - `restauxrigi` (x-convention) or `restaŭrigi` (if ŭ is acceptable in the locale)
-4. **`no_args_is_help=True`** for Typer apps with subcommands — calling without args shows help instead of "Missing command". Root apps with `invoke_without_command=True` and a callback are exempt.
-5. **Do NOT use bare `help`/`helpi` commands** `-h/--helpo/--help` flags are sufficient
-6. **Domain-specific commands** (e.g., `konekti`, `restarti`, `generi`) are allowed but should be minimized
-7. **Hidden aliases** — deprecated commands should be registered with `@app.command(hidden=True)` or `deprecated=True`
+3. **ASCII only for command names** — CLI command names must be ASCII-only. Strip diacritics rather than using x-convention:
+   - `serci` not `serĉi` (strip ĉ→c)
+   - `restaurigi` not `restaŭrigi` (strip ŭ→u, not `restauxrigi`)
+   - `cio` not `cxio` (x-convention is not acceptable)
+
+   **Do NOT use x-convention** (`cx`, `gx`, `sx`, `jx`, `hx`, `ux`) in command names or user-facing text. X-convention is a historical workaround for terminals that lack UTF-8 support — modern terminals handle UTF-8 fine.
+
+4. **Proper Esperanto for user-facing text** — help strings, prompts, output messages, and all user-facing text **must** use proper Unicode Esperanto with diacritics (`ĉ`, `ĝ`, `ĥ`, `ĵ`, `ŝ`, `ŭ`). Examples:
+   - `Ĝisdatigis` not `Gxisdatigis`
+   - `Ĉu` not `Cxu`
+   - `ŝanĝoj` not `sxangoj`
+5. **`no_args_is_help=True`** for Typer apps with subcommands — calling without args shows help instead of "Missing command". Root apps with `invoke_without_command=True` and a callback are exempt.
+6. **Do NOT use bare `help`/`helpi` commands** `-h/--helpo/--help` flags are sufficient
+7. **Domain-specific commands** (e.g., `konekti`, `restarti`, `generi`) are allowed but should be minimized
+8. **Hidden aliases** — deprecated commands should be registered with `@app.command(hidden=True)` or `deprecated=True`
 
 #### Standard Commands
 
@@ -489,6 +497,45 @@ def isolate_module(monkeypatch, tmp_path):
 This is the **required** pattern for all modules. See `A.core.testing` for details.
 
 **Rule:** `@patch` decorators are for controlling return values, NOT for isolation. The `autouse` fixture is the safety net. Tests that write to real databases or keyrings will be rejected in code review.
+
+### Common Pitfall: `patch.dict("sys.modules", ...)`
+
+Do **not** wrap **the module-under-test's import** inside a `patch.dict("sys.modules", {...})` block:
+
+```python
+# ❌ WRONG — modules imported inside are removed from cache on exit
+with patch.dict("sys.modules", {"keyring": Mock()}):
+    from A_organizi.utils.sync import myfunc  # A_organizi.* removed on exit!
+```
+
+The `patch.dict` context manager restores `sys.modules` to its **original state** on exit.
+All modules that were loaded during the block (not just the mocked dependency) are
+**deleted from the cache**. Later re-imports create fresh module objects with different
+`__dict__` entries, while functions imported during the block retain stale `__globals__`
+references. Result: `@patch("module.func")` silently mocks the wrong namespace and has
+no effect.
+
+**If all tests need the mocked dependency**, install it permanently **before** importing:
+
+```python
+# ✅ CORRECT
+import sys
+from unittest.mock import MagicMock
+sys.modules["keyring"] = MagicMock()   # permanent — modules stay cached
+from A_organizi.utils.sync import ...  # safe: module cached at import time
+```
+
+**If different tests need opposite states** (mocked vs missing), `patch.dict` is acceptable
+**only if** the module-under-test's import happens at module level (outside the block):
+
+```python
+# ✅ SAFE — lazy optional import inside function
+from mymodule import myfunc  # ← module-level, outside patch.dict
+
+def test_with_mock():
+    with patch.dict("sys.modules", {"optional_dep": Mock()}):
+        myfunc()  # safe: myfunc lazily imports optional_dep internally
+```
 
 ---
 
