@@ -112,7 +112,7 @@ Consistent naming reduces user confusion and enables cross-module tooling.
 | `aldoni` | Add/create item | **Required** for CRUD modules | must have duplicate verification: propose to modifi if similar entry exists |
 | `modifi` | Update/modify item | **Required** for CRUD modules | |
 | `forigi` | Delete item(s) | **Required** for CRUD modules | Accept **multiple positional args** for bulk delete. See [`forigi` Contract](#forigi-contract-crud-modules) below. |
-| `serci` | Search items | **Required** for data modules | Use ASCII `c` (NOT `serĉi` with diacritic). `serchi` may be kept as deprecated alias. |
+| `serci` | Search items | **Required** for data modules | Use ASCII `c` (NOT `serĉi` with diacritic). `serchi` is NOT allowed (x-convention, see Rule 4 above). |
 | `importi` | Import data | Recommended | |
 | `eksporti` | Export data | Recommended | |
 | `rubujo` | Trash operations (as subcommand group) | For modules with soft-delete | See "Trash Commands" below. |
