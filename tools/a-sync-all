@@ -1,0 +1,28 @@
+#!/bin/sh
+# Reinstall all A-modules in editable mode.
+# Run from this directory: ./a-sync-all
+# Or from anywhere: A-workspace/tools/a-sync-all
+
+set -e
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+workspace_dir="$(cd "$script_dir/.." && pwd)"
+
+echo "=== Reinstalling all A-modules in editable mode ==="
+echo ""
+
+for d in "$workspace_dir"/../A-core/ "$workspace_dir"/../A-*/; do
+    # Normalize path
+    dir="$(cd "$d" 2>/dev/null && pwd)" || continue
+    repo="$(basename "$dir")"
+
+    if [ ! -f "$dir/pyproject.toml" ]; then
+        continue
+    fi
+
+    echo "→ $repo"
+    (cd "$dir" && uv pip install -e . 2>&1 | tail -1)
+done
+
+echo ""
+echo "=== Done ==="

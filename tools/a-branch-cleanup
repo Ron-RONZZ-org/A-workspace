@@ -1,0 +1,60 @@
+#!/bin/bash
+# Audit branches across all A-repos.
+# Lists branches that may be stale (merged or superseded).
+# Run from this directory: ./a-branch-cleanup
+
+set -e
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+workspace_dir="$(cd "$script_dir/.." && pwd)"
+root="$(cd "$workspace_dir/.." && pwd)"
+
+echo "=== A-module branch audit ==="
+echo ""
+
+for d in "$root"/A-core/ "$root"/A-*/; do
+    dir="$(cd "$d" 2>/dev/null && pwd)" || continue
+    repo="$(basename "$dir")"
+
+    if [ ! -d "$dir/.git" ]; then
+        continue
+    fi
+
+    # Fetch latest
+    (cd "$dir" && git fetch --quiet origin 2>/dev/null || true)
+
+    # Get current branch
+    current=$(cd "$dir" && git branch --show-current 2>/dev/null)
+
+    # List local branches that are not main and not current
+    branches=$(cd "$dir" && git branch --format="%(refname:short)" | grep -v '^main$' | grep -v "^$current$" 2>/dev/null || true)
+
+    if [ -z "$branches" ]; then
+        continue
+    fi
+
+    echo "────────────────────────────────────────"
+    echo "  $repo  (current: $current)"
+    echo "────────────────────────────────────────"
+
+    while IFS= read -r branch; do
+        [ -z "$branch" ] && continue
+
+        # Check if branch is merged into main
+        merged_status=$(cd "$dir" && git branch --merged main 2>/dev/null | grep -c "$branch" || true)
+
+        # Check if there's a remote tracking branch
+        has_remote=$(cd "$dir" && git branch -r 2>/dev/null | grep -c "origin/$branch" || true)
+
+        if [ "$merged_status" -gt 0 ]; then
+            echo "  MERGED   : $branch${has_remote:+ (has remote)}"
+        else
+            # Count commits ahead of main
+            ahead=$(cd "$dir" && git rev-list --count "main..$branch" 2>/dev/null || echo "?")
+            last_commit=$(cd "$dir" && git log "$branch" -1 --format="%ci %s" --no-walk 2>/dev/null || echo "?")
+            echo "  UNMERGED : $branch (${ahead} commits ahead, last: $last_commit)"
+        fi
+    done <<< "$branches"
+done
+echo ""
+echo "=== Done ==="
