@@ -11,7 +11,14 @@ This is the **workspace root context** — the parent directory containing multi
 
 ## Project Purpose
 
-**A project** is reimplementing [autish](https://github.com/Ron-RONZZ-org/autish/) features as a modular A-ecosystem:
+The **A-ecosystem** is a modern, modular CLI framework for users who
+prefer the terminal over graphical interfaces — whether for speed,
+automation, personal comfort (e.g. GUIs can be overwhelming for
+autistic users), or any other reason.
+
+It reimplements features from the original
+[autish](https://github.com/Ron-RONZZ-org/autish/) as a collection of
+independent, composable plugins, each focused on a specific domain:
 
 | Directory | Purpose |
 |-----------|---------|
@@ -24,9 +31,14 @@ This is the **workspace root context** — the parent directory containing multi
 | `A-sekurkopio/` | Backup/restore plugin |
 | `A-lien/` | Email+contacts plugin |
 | `A-medio/` | Media plugin |
+| `A-kunpiloto/` | AI copilot (natural-language interface to all modules) |
 | `autish-legacy/` | **Legacy reference only** — do not modify |
 
-**Goal:** Better modularity, performance, and maintainability than autish-legacy.
+**Goals:**
+- Modularity — each domain is its own package with its own release cycle.
+- Performance — faster and lighter than the original autish.
+- Maintainability — clean architecture, strong typing, comprehensive tests.
+- User freedom — the terminal is a choice, not a compromise.
 
 ---
 
